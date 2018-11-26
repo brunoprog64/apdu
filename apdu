@@ -13,9 +13,11 @@ from fcntl import fcntl, F_GETFL, F_SETFL
 from smartcard.System import readers
 from smartcard.CardRequest import CardRequest
 from smartcard.util import *
+from smartcard.CardConnection import CardConnection
 
 VERSION = "1.0"
 HELLO = "APDU shell v%s" % VERSION
+FORCE_T1_PROTOCOL = "NO" #this flag will control if we force the T1 protocol on the APDUs
 
 def error(e, lineno = None):
     out = "   Error"
@@ -65,11 +67,11 @@ class Connection(object):
     def inserted(self, card):
         self.__connection = card.createConnection()
         self.__connection.connect()
-        # print "Card connected: %s" % toHexString(card.atr)
+        print "Card connected: %s" % toHexString(card.atr)
 
     def removed(self):
         self.__connection = None
-        # print "Card removed"
+        print "Card removed"
 
     def send(self, apdu, output=None, show_sent=True):
          if not self.__connection:
@@ -78,8 +80,13 @@ class Connection(object):
          # print input
          if show_sent:         
              print ">> %s" % toHexString(apdu)
+         
+         if FORCE_T1_PROTOCOL == "YES":
+            data, sw1, sw2 = self.__connection.transmit(apdu, CardConnection.T1_protocol)
+         else:
+             data, sw1, sw2 = self.__connection.transmit(apdu)
 
-         data, sw1, sw2 = self.__connection.transmit(apdu)
+         #print "DEBUG:", data, sw1, sw2
 
          # print output and data
          print "<< %02X %02X%s" % (sw1, sw2, ", %d bytes" % len(data) if data else "")
@@ -197,6 +204,11 @@ Usage: %s [options]
 
     -h, --help
         Display this help message
+
+    -t --force-t1-protocol
+        Forces the APDU Shell to send commands with the T1 Protocol.
+        This is done due to buggy firmware for the ACR122U NFC reader.
+
 """ % (HELLO, sys.argv[0])
 
 
@@ -206,7 +218,7 @@ if __name__ == "__main__":
 
     # Parse options
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hr:l", ["help", "reader=", "list"])
+        opts, args = getopt.getopt(sys.argv[1:], "htr:l", ["help", "reader=", "list", "force-t1-protocol"])
     except getopt.GetoptError as e:
         print >> sys.stderr, str(e)
         usage()
@@ -220,6 +232,9 @@ if __name__ == "__main__":
         elif o in ("-l", "--list"):
             list_readers()
             sys.exit()
+        elif o in ("-t", "--force-t1-protocol"):
+            print " ** Forcing the T1 Protocol on the APDU...."
+            FORCE_T1_PROTOCOL = "YES"
 
     # Check TTY interactivity
     mode = os.fstat(0).st_mode
